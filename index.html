@@ -432,24 +432,6 @@
         .delete-btn:hover { background: #ff9a9e; color: #fff; }
         .edit-mode .delete-btn { display: flex; }
 
-        .caption-area {
-            padding: 15px 20px 20px 20px;
-            background: rgba(255, 248, 250, 0.5);
-            border-top: 1px solid #f5d6dd;
-        }
-        
-        .caption-text {
-            font-size: 1rem;
-            color: #5c3d4a;
-            outline: none;
-            min-height: 30px;
-            padding: 5px 12px;
-            border-radius: 15px;
-            transition: 0.3s;
-            border: 1px solid transparent;
-            background: transparent;
-        }
-
         .footer-note {
             text-align: center;
             opacity: 0.4;
@@ -478,12 +460,97 @@
             100% { transform: translate(var(--tx), var(--ty)) rotate(720deg) scale(0); opacity: 0; }
         }
 
+        /* أغنية الخلفية */
+        .audio-player {
+            position: fixed;
+            bottom: 25px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 999;
+            background: rgba(255, 248, 250, 0.95);
+            backdrop-filter: blur(25px);
+            border-radius: 80px;
+            padding: 12px 25px;
+            border: 1px solid rgba(255, 255, 255, 0.8);
+            box-shadow: 0 15px 50px rgba(201, 152, 158, 0.3);
+            display: none;
+            align-items: center;
+            gap: 15px;
+            width: 90%;
+            max-width: 600px;
+        }
+
+        .audio-player.active {
+            display: flex;
+        }
+
+        .audio-player .song-name {
+            font-size: 0.9rem;
+            font-weight: 700;
+            color: #4a2c33;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            flex: 1;
+            min-width: 0;
+        }
+
+        .audio-player .controls {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .audio-player button {
+            background: rgba(255, 154, 158, 0.2);
+            border: none;
+            color: #6d3b4b;
+            font-size: 1.3rem;
+            cursor: pointer;
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            transition: 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .audio-player button:hover {
+            background: #ff9a9e;
+            color: #fff;
+        }
+
+        .audio-progress {
+            flex: 0 0 80px;
+            height: 4px;
+            background: #f5d6dd;
+            border-radius: 10px;
+            cursor: pointer;
+            position: relative;
+        }
+
+        .audio-progress .fill {
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(145deg, #ff9a9e, #d4737e);
+            border-radius: 10px;
+        }
+
+        .audio-player .volume-btn {
+            font-size: 1.1rem;
+            opacity: 0.7;
+        }
+
         @media (max-width: 600px) {
             .gift-card { padding: 20px 15px; border-radius: 35px; }
             #welcome-screen h1 { font-size: 1.8rem; }
             .btn-yes, .btn-no { font-size: 1.2rem; padding: 12px 25px; min-width: 80px; }
             .header-actions h2 { font-size: 1.2rem; }
             .media-item img, .media-item video { max-height: 280px; }
+            .audio-player { padding: 10px 15px; gap: 10px; width: 95%; }
+            .audio-player button { font-size: 1rem; width: 32px; height: 32px; }
+            .audio-progress { flex: 0 0 50px; }
         }
     </style>
 </head>
@@ -491,6 +558,21 @@
 
     <div class="bg-stars" id="starfield"></div>
     <div class="confetti-container" id="confettiContainer"></div>
+
+    <!-- مشغل الأغنية الخلفية -->
+    <div class="audio-player" id="audioPlayer">
+        <span>🎵</span>
+        <div class="song-name" id="songName">الأغنية الخلفية</div>
+        <div class="audio-progress" id="audioProgress">
+            <div class="fill" id="audioFill"></div>
+        </div>
+        <div class="controls">
+            <button onclick="skipAudio(-5)">⏪</button>
+            <button id="playBtn" onclick="togglePlay()">▶️</button>
+            <button onclick="skipAudio(5)">⏩</button>
+            <button class="volume-btn" id="volumeBtn" onclick="toggleMute()">🔊</button>
+        </div>
+    </div>
 
     <div class="gift-card" id="giftCard">
 
@@ -536,6 +618,8 @@
                     <input type="file" id="imageUpload" accept="image/*" multiple onchange="uploadFiles(this, 'image')">
                     <label for="videoUpload">🎥 رفع فيديوهات</label>
                     <input type="file" id="videoUpload" accept="video/*" multiple onchange="uploadFiles(this, 'video')">
+                    <label for="audioUpload">🎵 رفع أغنية خلفية</label>
+                    <input type="file" id="audioUpload" accept="audio/*" onchange="uploadAudio(this)">
                 </div>
             </div>
 
@@ -545,17 +629,22 @@
     </div>
 
     <script>
-        const STORAGE_KEY = 'giftDataV1';
+        const STORAGE_KEY = 'giftDataV2';
         let currentData = {};
         let isUnlocked = false;
         let isEditMode = false;
+        let audioElement = new Audio();
+        let isPlaying = false;
+        let isMuted = false;
 
         function getDefaultData() {
             return {
                 password: '',
                 personName: 'يا حبيبي',
                 message: '💖 أتمنى لكِ يومًا مليئًا بالفرح والضحك. كل سنة وأنتِ أجمل نسمة في حياتي!',
-                media: []
+                media: [],
+                audio: null,
+                audioName: ''
             };
         }
 
@@ -577,6 +666,7 @@
                 console.log('✅ تم حفظ البيانات');
             } catch (e) {
                 console.error('خطأ في حفظ البيانات:', e);
+                alert('⚠️ البيانات كبيرة جداً! حاولي تحذفي بعض الصور أو الفيديوهات');
             }
         }
 
@@ -653,6 +743,7 @@
             isUnlocked = true;
             renderAll();
             triggerConfetti(25);
+            loadAudio();
         }
 
         function renderAll() {
@@ -672,7 +763,6 @@
             mediaItems.forEach((item) => {
                 const div = document.createElement('div');
                 div.className = 'media-item';
-                div.setAttribute('data-id', item.id);
 
                 const badge = document.createElement('span');
                 badge.className = 'media-badge';
@@ -735,6 +825,86 @@
             input.value = '';
         }
 
+        function uploadAudio(input) {
+            const file = input.files[0];
+            if (!file) return;
+
+            if (file.size > 20 * 1024 * 1024) {
+                alert('⚠️ الأغنية كبيرة جداً (أقصى حد 20 ميجا)');
+                input.value = '';
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                currentData.audio = e.target.result;
+                currentData.audioName = file.name;
+                saveData();
+                loadAudio();
+                triggerConfetti(10);
+                alert('✅ تم رفع الأغنية بنجاح!');
+            };
+            reader.readAsDataURL(file);
+            input.value = '';
+        }
+
+        function loadAudio() {
+            if (currentData.audio) {
+                audioElement.src = currentData.audio;
+                audioElement.loop = true;
+                audioElement.volume = 0.7;
+                document.getElementById('songName').innerText = currentData.audioName || 'الأغنية الخلفية';
+                document.getElementById('audioPlayer').classList.add('active');
+                
+                audioElement.addEventListener('timeupdate', updateProgress);
+                audioElement.addEventListener('ended', () => {
+                    isPlaying = false;
+                    document.getElementById('playBtn').innerText = '▶️';
+                });
+            }
+        }
+
+        function togglePlay() {
+            if (!currentData.audio) {
+                alert('⚠️ لم يتم رفع أي أغنية بعد!');
+                return;
+            }
+
+            if (isPlaying) {
+                audioElement.pause();
+                isPlaying = false;
+                document.getElementById('playBtn').innerText = '▶️';
+            } else {
+                audioElement.play();
+                isPlaying = true;
+                document.getElementById('playBtn').innerText = '⏸️';
+            }
+        }
+
+        function skipAudio(seconds) {
+            audioElement.currentTime = Math.max(0, Math.min(audioElement.currentTime + seconds, audioElement.duration));
+        }
+
+        function toggleMute() {
+            isMuted = !isMuted;
+            audioElement.muted = isMuted;
+            document.getElementById('volumeBtn').innerText = isMuted ? '🔇' : '🔊';
+        }
+
+        function updateProgress() {
+            if (audioElement.duration) {
+                const percent = (audioElement.currentTime / audioElement.duration) * 100;
+                document.getElementById('audioFill').style.width = percent + '%';
+            }
+        }
+
+        document.getElementById('audioProgress').addEventListener('click', function(e) {
+            if (!audioElement.duration) return;
+            const rect = this.getBoundingClientRect();
+            const percent = (e.clientX - rect.left) / rect.width;
+            audioElement.currentTime = percent * audioElement.duration;
+        });
+
         function deleteMediaItem(id) {
             if (!confirm('هل تريدين حذف هذا العنصر؟')) return;
             currentData.media = currentData.media.filter(item => item.id !== id);
@@ -747,15 +917,18 @@
             const btn = document.getElementById('editToggleBtn');
             const uploadArea = document.getElementById('uploadArea');
             const msgBox = document.getElementById('messageBox');
+            const card = document.getElementById('giftCard');
 
             if (isEditMode) {
                 btn.innerText = '💾 حفظ';
                 uploadArea.style.display = 'flex';
                 msgBox.contentEditable = 'true';
+                card.classList.add('edit-mode');
             } else {
                 btn.innerText = '✏️ تعديل';
                 uploadArea.style.display = 'none';
                 msgBox.contentEditable = 'false';
+                card.classList.remove('edit-mode');
                 currentData.personName = document.getElementById('personName').innerText;
                 currentData.message = msgBox.innerText;
                 saveData();
@@ -822,7 +995,7 @@
             if (e.key === 'Enter') unlockGift();
         });
 
-        console.log('🎀 الموقع جاهز! البيانات محفوظة في localStorage');
+        console.log('🎀 الموقع جاهز! مع خاصية الأغنية الخلفية 🎵');
     </script>
 </body>
 </html>
