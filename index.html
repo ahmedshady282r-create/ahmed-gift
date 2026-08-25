@@ -549,6 +549,16 @@
             opacity: 0.7;
         }
 
+        .loading-spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255, 154, 158, 0.3);
+            border-radius: 50%;
+            border-top-color: #ff9a9e;
+            animation: spin 1s ease-in-out infinite;
+        }
+
         @media (max-width: 600px) {
             .gift-card { padding: 20px 15px; border-radius: 35px; }
             #welcome-screen h1 { font-size: 1.8rem; }
@@ -636,13 +646,74 @@
     </div>
 
     <script>
-        const STORAGE_KEY = 'giftDataFinal';
+        // استخدام IndexedDB بدلاً من localStorage للبيانات الكبيرة
+        const DB_NAME = 'GiftDB';
+        const STORE_NAME = 'GiftData';
+        let db = null;
+
+        // فتح قاعدة البيانات
+        function openDB() {
+            return new Promise((resolve, reject) => {
+                const request = indexedDB.open(DB_NAME, 1);
+                
+                request.onerror = () => reject(request.error);
+                request.onsuccess = () => {
+                    db = request.result;
+                    resolve(db);
+                };
+                
+                request.onupgradeneeded = (event) => {
+                    db = event.target.result;
+                    if (!db.objectStoreNames.contains(STORE_NAME)) {
+                        db.createObjectStore(STORE_NAME, { keyPath: 'id' });
+                    }
+                };
+            });
+        }
+
+        // حفظ البيانات
+        function saveDataToDB(data) {
+            return new Promise((resolve, reject) => {
+                const transaction = db.transaction([STORE_NAME], 'readwrite');
+                const store = transaction.objectStore(STORE_NAME);
+                const request = store.put({ id: 'main', ...data });
+                
+                request.onerror = () => reject(request.error);
+                request.onsuccess = () => {
+                    console.log('✅ تم حفظ البيانات بنجاح في IndexedDB');
+                    resolve();
+                };
+            });
+        }
+
+        // تحميل البيانات
+        function loadDataFromDB() {
+            return new Promise((resolve, reject) => {
+                const transaction = db.transaction([STORE_NAME], 'readonly');
+                const store = transaction.objectStore(STORE_NAME);
+                const request = store.get('main');
+                
+                request.onerror = () => reject(request.error);
+                request.onsuccess = () => {
+                    const data = request.result;
+                    if (data) {
+                        console.log('✅ تم تحميل البيانات من IndexedDB');
+                        const { id, ...rest } = data;
+                        resolve(rest);
+                    } else {
+                        resolve(getDefaultData());
+                    }
+                };
+            });
+        }
+
         let currentData = {};
         let isUnlocked = false;
         let isEditMode = false;
         let audioElement = new Audio();
         let isPlaying = false;
         let isMuted = false;
+        let saveTimeout = null;
 
         function getDefaultData() {
             return {
@@ -655,42 +726,15 @@
             };
         }
 
-        function loadData() {
-            try {
-                let stored = localStorage.getItem(STORAGE_KEY);
-                if (stored) {
-                    console.log('✅ تم تحميل البيانات من localStorage');
-                    return JSON.parse(stored);
-                }
-            } catch (e) {
-                console.error('خطأ في تحميل البيانات:', e);
-            }
-            console.log('📝 بيانات جديدة');
-            return getDefaultData();
+        // حفظ آمن مع تأخير
+        function saveDataSafely() {
+            clearTimeout(saveTimeout);
+            saveTimeout = setTimeout(() => {
+                saveDataToDB(currentData).catch(err => {
+                    console.error('❌ خطأ في حفظ البيانات:', err);
+                });
+            }, 1000);
         }
-
-        function saveData() {
-            try {
-                const dataToSave = {
-                    password: currentData.password,
-                    personName: currentData.personName,
-                    message: currentData.message,
-                    media: currentData.media || [],
-                    audio: currentData.audio,
-                    audioName: currentData.audioName
-                };
-                localStorage.setItem(STORAGE_KEY, JSON.stringify(dataToSave));
-                console.log('✅ تم حفظ البيانات بنجاح');
-            } catch (e) {
-                console.error('خطأ في حفظ البيانات:', e);
-                if (e.name === 'QuotaExceededError') {
-                    alert('⚠️ البيانات كبيرة جداً! حاولي تحذفي بعض الصور');
-                }
-            }
-        }
-
-        // تحميل البيانات عند بدء الصفحة
-        currentData = loadData();
 
         const welcomeScreen = document.getElementById('welcome-screen');
         const passwordScreen = document.getElementById('password-screen');
@@ -734,7 +778,7 @@
             }
         });
 
-        function unlockGift() {
+        async function unlockGift() {
             const input = document.getElementById('passwordInput');
             const entered = input.value.trim();
 
@@ -744,7 +788,7 @@
                     return;
                 }
                 currentData.password = entered;
-                saveData();
+                await saveDataToDB(currentData);
                 document.getElementById('setupMsg').innerHTML = '✅ تم تعيين الباسورد!';
                 setTimeout(() => showMainContent(), 500);
                 return;
@@ -799,12 +843,14 @@
                     const img = document.createElement('img');
                     img.src = item.data;
                     img.onclick = () => triggerConfetti(8);
+                    img.loading = 'lazy';
                     div.appendChild(img);
                 } else if (item.type === 'video') {
                     const vid = document.createElement('video');
                     vid.src = item.data;
                     vid.controls = true;
                     vid.style.width = '100%';
+                    vid.preload = 'metadata';
                     vid.onclick = () => triggerConfetti(8);
                     div.appendChild(vid);
                 }
@@ -828,12 +874,9 @@
 
             for (let i = 0; i < files.length; i++) {
                 const file = files[i];
-                if (file.size > 8 * 1024 * 1024) {
-                    alert(`⚠️ الملف "${file.name}" أكبر من 8 ميجا`);
-                    continue;
-                }
                 const reader = new FileReader();
                 const fileId = Date.now() + Math.random() * 1000000 + i;
+                
                 reader.onload = function(e) {
                     if (!currentData.media) currentData.media = [];
                     currentData.media.push({
@@ -842,9 +885,9 @@
                         data: e.target.result,
                         name: file.name
                     });
-                    saveData();
                     renderAll();
                     triggerConfetti(5);
+                    saveDataSafely();
                 };
                 reader.readAsDataURL(file);
             }
@@ -855,17 +898,11 @@
             const file = input.files[0];
             if (!file) return;
 
-            if (file.size > 20 * 1024 * 1024) {
-                alert('⚠️ الأغنية كبيرة جداً (أقصى حد 20 ميجا)');
-                input.value = '';
-                return;
-            }
-
             const reader = new FileReader();
             reader.onload = function(e) {
                 currentData.audio = e.target.result;
                 currentData.audioName = file.name;
-                saveData();
+                saveDataSafely();
                 loadAudio();
                 triggerConfetti(10);
                 alert('✅ تم رفع الأغنية بنجاح!');
@@ -932,8 +969,8 @@
         function deleteMediaItem(id) {
             if (!confirm('هل تريدين حذف هذا العنصر؟')) return;
             currentData.media = currentData.media.filter(item => item.id !== id);
-            saveData();
             renderAll();
+            saveDataSafely();
         }
 
         function toggleEditMode() {
@@ -956,7 +993,7 @@
                 card.classList.remove('edit-mode');
                 currentData.personName = document.getElementById('personName').innerText;
                 currentData.message = msgBox.innerText;
-                saveData();
+                saveDataSafely();
                 renderAll();
             }
         }
@@ -965,7 +1002,7 @@
             const newPass = prompt('🔑 أدخل الباسورد الجديد (3 أحرف على الأقل):');
             if (newPass && newPass.length >= 3) {
                 currentData.password = newPass;
-                saveData();
+                saveDataSafely();
                 alert('✅ تم تغيير الباسورد!');
             } else if (newPass !== null) {
                 alert('⚠️ 3 أحرف على الأقل');
@@ -1004,34 +1041,42 @@
             }
         }
 
-        window.addEventListener('load', function() {
-            generateStars();
-            currentData = loadData();
-            
-            if (currentData.password && currentData.password.length > 0) {
-                welcomeScreen.style.display = 'none';
-                passwordScreen.style.display = 'flex';
-                mainContent.style.display = 'none';
-                document.getElementById('passwordInput').focus();
-            } else {
-                welcomeScreen.style.display = 'flex';
-                passwordScreen.style.display = 'none';
-                mainContent.style.display = 'none';
+        async function initializeApp() {
+            try {
+                await openDB();
+                currentData = await loadDataFromDB();
+                
+                generateStars();
+                
+                if (currentData.password && currentData.password.length > 0) {
+                    welcomeScreen.style.display = 'none';
+                    passwordScreen.style.display = 'flex';
+                    mainContent.style.display = 'none';
+                    document.getElementById('passwordInput').focus();
+                } else {
+                    welcomeScreen.style.display = 'flex';
+                    passwordScreen.style.display = 'none';
+                    mainContent.style.display = 'none';
+                }
+            } catch (err) {
+                console.error('❌ خطأ في تهيئة التطبيق:', err);
             }
-        });
+        }
+
+        window.addEventListener('load', initializeApp);
 
         document.getElementById('passwordInput').addEventListener('keypress', function(e) {
             if (e.key === 'Enter') unlockGift();
         });
 
-        // حفظ البيانات تلقائياً كل 5 ثوان
-        setInterval(() => {
-            if (isUnlocked && isEditMode) {
-                saveData();
+        // حفظ تلقائي عند إغلاق الصفحة
+        window.addEventListener('beforeunload', async () => {
+            if (isUnlocked) {
+                await saveDataToDB(currentData);
             }
-        }, 5000);
+        });
 
-        console.log('🎀 الموقع جاهز 100%! البيانات محفوظة في localStorage');
+        console.log('🎀 التطبيق جاهز! استخدام IndexedDB للبيانات الكبيرة');
     </script>
 </body>
 </html>
