@@ -316,6 +316,13 @@
             text-align: center;
             min-height: 60px;
             color: #4a2c33;
+            word-wrap: break-word;
+            white-space: pre-wrap;
+        }
+
+        .editable-text[contenteditable="true"] {
+            border-color: #ff9a9e;
+            background: rgba(255, 154, 158, 0.05);
         }
 
         .upload-area {
@@ -629,7 +636,7 @@
     </div>
 
     <script>
-        const STORAGE_KEY = 'giftDataV2';
+        const STORAGE_KEY = 'giftDataFinal';
         let currentData = {};
         let isUnlocked = false;
         let isEditMode = false;
@@ -652,24 +659,37 @@
             try {
                 let stored = localStorage.getItem(STORAGE_KEY);
                 if (stored) {
+                    console.log('✅ تم تحميل البيانات من localStorage');
                     return JSON.parse(stored);
                 }
             } catch (e) {
                 console.error('خطأ في تحميل البيانات:', e);
             }
+            console.log('📝 بيانات جديدة');
             return getDefaultData();
         }
 
         function saveData() {
             try {
-                localStorage.setItem(STORAGE_KEY, JSON.stringify(currentData));
-                console.log('✅ تم حفظ البيانات');
+                const dataToSave = {
+                    password: currentData.password,
+                    personName: currentData.personName,
+                    message: currentData.message,
+                    media: currentData.media || [],
+                    audio: currentData.audio,
+                    audioName: currentData.audioName
+                };
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(dataToSave));
+                console.log('✅ تم حفظ البيانات بنجاح');
             } catch (e) {
                 console.error('خطأ في حفظ البيانات:', e);
-                alert('⚠️ البيانات كبيرة جداً! حاولي تحذفي بعض الصور أو الفيديوهات');
+                if (e.name === 'QuotaExceededError') {
+                    alert('⚠️ البيانات كبيرة جداً! حاولي تحذفي بعض الصور');
+                }
             }
         }
 
+        // تحميل البيانات عند بدء الصفحة
         currentData = loadData();
 
         const welcomeScreen = document.getElementById('welcome-screen');
@@ -708,6 +728,7 @@
             triggerConfetti(30);
             welcomeScreen.style.display = 'none';
             passwordScreen.style.display = 'flex';
+            document.getElementById('passwordInput').focus();
             if (!currentData.password) {
                 document.getElementById('setupMsg').innerHTML = '⚠️ أول مرة: حددي باسورد جديد';
             }
@@ -725,7 +746,7 @@
                 currentData.password = entered;
                 saveData();
                 document.getElementById('setupMsg').innerHTML = '✅ تم تعيين الباسورد!';
-                showMainContent();
+                setTimeout(() => showMainContent(), 500);
                 return;
             }
 
@@ -734,6 +755,7 @@
             } else {
                 alert('❌ الباسورد غلط!');
                 input.value = '';
+                input.focus();
             }
         }
 
@@ -748,8 +770,12 @@
 
         function renderAll() {
             if (!isUnlocked) return;
-            document.getElementById('personName').innerText = currentData.personName || 'يا حبيبي';
-            document.getElementById('messageBox').innerText = currentData.message || '💖 أتمنى لكِ يومًا سعيدًا!';
+            
+            const personNameElem = document.getElementById('personName');
+            const messageBoxElem = document.getElementById('messageBox');
+            
+            personNameElem.innerText = currentData.personName || 'يا حبيبي';
+            messageBoxElem.innerText = currentData.message || '💖 أتمنى لكِ يومًا سعيدًا!';
 
             const gallery = document.getElementById('mediaGallery');
             gallery.innerHTML = '';
@@ -857,10 +883,6 @@
                 document.getElementById('audioPlayer').classList.add('active');
                 
                 audioElement.addEventListener('timeupdate', updateProgress);
-                audioElement.addEventListener('ended', () => {
-                    isPlaying = false;
-                    document.getElementById('playBtn').innerText = '▶️';
-                });
             }
         }
 
@@ -875,7 +897,9 @@
                 isPlaying = false;
                 document.getElementById('playBtn').innerText = '▶️';
             } else {
-                audioElement.play();
+                audioElement.play().catch(() => {
+                    alert('⚠️ اضغطي على زر التشغيل مرة أخرى');
+                });
                 isPlaying = true;
                 document.getElementById('playBtn').innerText = '⏸️';
             }
@@ -923,6 +947,7 @@
                 btn.innerText = '💾 حفظ';
                 uploadArea.style.display = 'flex';
                 msgBox.contentEditable = 'true';
+                msgBox.focus();
                 card.classList.add('edit-mode');
             } else {
                 btn.innerText = '✏️ تعديل';
@@ -937,11 +962,13 @@
         }
 
         function changePassword() {
-            const newPass = prompt('🔑 أدخل الباسورد الجديد:');
+            const newPass = prompt('🔑 أدخل الباسورد الجديد (3 أحرف على الأقل):');
             if (newPass && newPass.length >= 3) {
                 currentData.password = newPass;
                 saveData();
                 alert('✅ تم تغيير الباسورد!');
+            } else if (newPass !== null) {
+                alert('⚠️ 3 أحرف على الأقل');
             }
         }
 
@@ -981,21 +1008,30 @@
             generateStars();
             currentData = loadData();
             
-            if (currentData.password) {
+            if (currentData.password && currentData.password.length > 0) {
                 welcomeScreen.style.display = 'none';
                 passwordScreen.style.display = 'flex';
+                mainContent.style.display = 'none';
+                document.getElementById('passwordInput').focus();
             } else {
                 welcomeScreen.style.display = 'flex';
                 passwordScreen.style.display = 'none';
+                mainContent.style.display = 'none';
             }
-            mainContent.style.display = 'none';
         });
 
         document.getElementById('passwordInput').addEventListener('keypress', function(e) {
             if (e.key === 'Enter') unlockGift();
         });
 
-        console.log('🎀 الموقع جاهز! مع خاصية الأغنية الخلفية 🎵');
+        // حفظ البيانات تلقائياً كل 5 ثوان
+        setInterval(() => {
+            if (isUnlocked && isEditMode) {
+                saveData();
+            }
+        }, 5000);
+
+        console.log('🎀 الموقع جاهز 100%! البيانات محفوظة في localStorage');
     </script>
 </body>
 </html>
