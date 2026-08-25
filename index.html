@@ -559,6 +559,95 @@
             animation: spin 1s ease-in-out infinite;
         }
 
+        /* تنسيق الـ Share Dialog */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 100000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal.show {
+            display: flex;
+        }
+
+        .modal-content {
+            background-color: rgba(255, 248, 250, 0.95);
+            backdrop-filter: blur(20px);
+            padding: 30px;
+            border-radius: 40px;
+            width: 90%;
+            max-width: 500px;
+            text-align: center;
+            box-shadow: 0 30px 70px rgba(201, 152, 158, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.5);
+        }
+
+        .modal-content h3 {
+            color: #6d3b4b;
+            margin-bottom: 20px;
+            font-size: 1.5rem;
+        }
+
+        .share-buttons {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .share-btn {
+            padding: 12px 25px;
+            border: none;
+            border-radius: 30px;
+            font-size: 1rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: 0.3s;
+            width: 100%;
+        }
+
+        .share-btn-export {
+            background: linear-gradient(145deg, #ff9a9e, #fad0c4);
+            color: #4a2c33;
+            box-shadow: 0 8px 20px rgba(255, 154, 158, 0.3);
+        }
+
+        .share-btn-export:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 12px 30px rgba(255, 154, 158, 0.5);
+        }
+
+        .share-btn-import {
+            background: rgba(255, 248, 250, 0.6);
+            color: #5c3d4a;
+            border: 2px solid #f5d6dd;
+        }
+
+        .share-btn-import:hover {
+            background: #fff0f3;
+        }
+
+        .close-modal {
+            background: none;
+            border: none;
+            color: #8b5e6b;
+            font-size: 1.8rem;
+            cursor: pointer;
+            position: absolute;
+            top: 15px;
+            right: 20px;
+        }
+
+        #importInput {
+            display: none;
+        }
+
         @media (max-width: 600px) {
             .gift-card { padding: 20px 15px; border-radius: 35px; }
             #welcome-screen h1 { font-size: 1.8rem; }
@@ -568,6 +657,7 @@
             .audio-player { padding: 10px 15px; gap: 10px; width: 95%; }
             .audio-player button { font-size: 1rem; width: 32px; height: 32px; }
             .audio-progress { flex: 0 0 50px; }
+            .modal-content { width: 85%; padding: 20px; }
         }
     </style>
 </head>
@@ -590,6 +680,20 @@
             <button class="volume-btn" id="volumeBtn" onclick="toggleMute()">🔊</button>
         </div>
     </div>
+
+    <!-- Share Modal -->
+    <div class="modal" id="shareModal">
+        <div class="modal-content">
+            <button class="close-modal" onclick="closeModal()">✕</button>
+            <h3>📤 شارك البيانات</h3>
+            <div class="share-buttons">
+                <button class="share-btn share-btn-export" onclick="exportData()">📥 حمّل البيانات</button>
+                <button class="share-btn share-btn-import" onclick="triggerImport()">📤 استورد بيانات</button>
+            </div>
+        </div>
+    </div>
+
+    <input type="file" id="importInput" accept=".json" onchange="importData(this.files[0])">
 
     <div class="gift-card" id="giftCard">
 
@@ -622,6 +726,7 @@
                 <div class="tools">
                     <button id="editToggleBtn" onclick="toggleEditMode()">✏️ تعديل</button>
                     <button onclick="changePassword()">🔑 تغيير الباسورد</button>
+                    <button onclick="openShareModal()">📤 شارك</button>
                 </div>
             </div>
 
@@ -818,7 +923,7 @@
             const personNameElem = document.getElementById('personName');
             const messageBoxElem = document.getElementById('messageBox');
             
-            personNameElem.innerText = currentData.personName || 'يا حبيبي';
+            personNameElem.innerText = currentData.personName || 'يا حبيب��';
             messageBoxElem.innerText = currentData.message || '💖 أتمنى لكِ يومًا سعيدًا!';
 
             const gallery = document.getElementById('mediaGallery');
@@ -827,7 +932,7 @@
             let mediaItems = currentData.media || [];
 
             if (mediaItems.length === 0) {
-                gallery.innerHTML = `<div style="text-align:center; padding:40px; opacity:0.4; border:1px dashed #f5d6dd; border-radius:30px; color:#8b5e6b;">📭 لا توجد صور أو فيديوهات. اضغطي "تعديل" لرفعها 🌸</div>`;
+                gallery.innerHTML = `<div style="text-align:center; padding:40px; opacity:0.4; border:1px dashed #f5d6dd; border-radius:30px; color:#8b5e6b;">📭 لا توجد صور أو فيديوهات حالياً</div>`;
             }
 
             mediaItems.forEach((item) => {
@@ -999,84 +1104,146 @@
         }
 
         function changePassword() {
-            const newPass = prompt('🔑 أدخل الباسورد الجديد (3 أحرف على الأقل):');
-            if (newPass && newPass.length >= 3) {
-                currentData.password = newPass;
-                saveDataSafely();
-                alert('✅ تم تغيير الباسورد!');
-            } else if (newPass !== null) {
-                alert('⚠️ 3 أحرف على الأقل');
+            const newPass = prompt('🔐 أدخل الباسورد الجديد:');
+            if (newPass === null) return;
+            if (newPass.length < 3) {
+                alert('⚠️ الباسورد يجب أن يكون 3 أحرف على الأقل');
+                return;
             }
+            currentData.password = newPass;
+            saveDataToDB(currentData);
+            alert('✅ تم تغيير الباسورد بنجاح!');
         }
 
-        function triggerConfetti(count = 12) {
+        // ===================== دوال المشاركة والتصدير/الاستيراد =====================
+
+        function openShareModal() {
+            document.getElementById('shareModal').classList.add('show');
+        }
+
+        function closeModal() {
+            document.getElementById('shareModal').classList.remove('show');
+        }
+
+        function exportData() {
+            const dataToExport = {
+                personName: currentData.personName,
+                message: currentData.message,
+                media: currentData.media || [],
+                audio: currentData.audio,
+                audioName: currentData.audioName,
+                exportedAt: new Date().toLocaleString('ar-EG')
+            };
+
+            const json = JSON.stringify(dataToExport, null, 2);
+            const blob = new Blob([json], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `gift-data-${Date.now()}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+            
+            alert('✅ تم تحميل البيانات بنجاح!');
+            closeModal();
+        }
+
+        function triggerImport() {
+            document.getElementById('importInput').click();
+        }
+
+        function importData(file) {
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = async (e) => {
+                try {
+                    const importedData = JSON.parse(e.target.result);
+                    
+                    // دمج البيانات المستوردة مع البيانات الحالية
+                    currentData.personName = importedData.personName || currentData.personName;
+                    currentData.message = importedData.message || currentData.message;
+                    currentData.media = importedData.media || [];
+                    currentData.audio = importedData.audio || null;
+                    currentData.audioName = importedData.audioName || '';
+
+                    await saveDataToDB(currentData);
+                    renderAll();
+                    loadAudio();
+                    triggerConfetti(30);
+                    alert('✅ تم استيراد البيانات بنجاح!');
+                    closeModal();
+                } catch (err) {
+                    alert('❌ خطأ: الملف غير صحيح أو تالف');
+                    console.error(err);
+                }
+            };
+            reader.readAsText(file);
+            
+            // إعادة تعيين input
+            document.getElementById('importInput').value = '';
+        }
+
+        // إغلاق Modal عند النقر خارجه
+        window.addEventListener('click', function(event) {
+            const modal = document.getElementById('shareModal');
+            if (event.target === modal) {
+                closeModal();
+            }
+        });
+
+        function triggerConfetti(count = 5) {
             const container = document.getElementById('confettiContainer');
-            const emojis = ['🌸', '✨', '💗', '🎀', '🫶', '🌷', '💝', '⭐', '🥰', '💖', '🎂'];
+            const emojis = ['🎉', '🎊', '💖', '✨', '🌸', '🎀', '💝', '🥰'];
+            
             for (let i = 0; i < count; i++) {
                 const piece = document.createElement('div');
                 piece.className = 'confetti-piece';
-                piece.innerText = emojis[Math.floor(Math.random() * emojis.length)];
-                piece.style.left = Math.random() * 100 + '%';
-                piece.style.top = Math.random() * 100 + '%';
-                piece.style.setProperty('--tx', (Math.random() - 0.5) * 500 + 'px');
-                piece.style.setProperty('--ty', (Math.random() - 0.5) * 500 - 200 + 'px');
+                piece.textContent = emojis[Math.floor(Math.random() * emojis.length)];
+                
+                const startX = Math.random() * window.innerWidth;
+                const startY = Math.random() * 100 - 50;
+                const endX = (Math.random() - 0.5) * 400;
+                const endY = window.innerHeight + 100;
+                
+                piece.style.left = startX + 'px';
+                piece.style.top = startY + 'px';
+                piece.style.setProperty('--tx', endX + 'px');
+                piece.style.setProperty('--ty', endY + 'px');
+                
                 container.appendChild(piece);
                 setTimeout(() => piece.remove(), 1800);
             }
         }
 
-        function generateStars() {
-            const container = document.getElementById('starfield');
-            for (let i = 0; i < 100; i++) {
+        function createStarfield() {
+            const starfield = document.getElementById('starfield');
+            for (let i = 0; i < 30; i++) {
                 const star = document.createElement('div');
                 star.className = 'star';
-                const size = 2 + Math.random() * 5;
-                star.style.width = size + 'px';
-                star.style.height = size + 'px';
+                star.style.width = Math.random() * 3 + 'px';
+                star.style.height = star.style.width;
                 star.style.left = Math.random() * 100 + '%';
                 star.style.top = Math.random() * 100 + '%';
-                star.style.setProperty('--duration', (2 + Math.random() * 4) + 's');
-                star.style.animationDelay = (Math.random() * 5) + 's';
-                container.appendChild(star);
+                star.style.setProperty('--duration', (Math.random() * 2 + 2) + 's');
+                starfield.appendChild(star);
             }
         }
 
-        async function initializeApp() {
+        // تهيئة التطبيق
+        async function init() {
             try {
                 await openDB();
                 currentData = await loadDataFromDB();
-                
-                generateStars();
-                
-                if (currentData.password && currentData.password.length > 0) {
-                    welcomeScreen.style.display = 'none';
-                    passwordScreen.style.display = 'flex';
-                    mainContent.style.display = 'none';
-                    document.getElementById('passwordInput').focus();
-                } else {
-                    welcomeScreen.style.display = 'flex';
-                    passwordScreen.style.display = 'none';
-                    mainContent.style.display = 'none';
-                }
+                createStarfield();
+                console.log('✅ تم تهيئة التطبيق بنجاح');
             } catch (err) {
-                console.error('❌ خطأ في تهيئة التطبيق:', err);
+                console.error('❌ خطأ في التهيئة:', err);
             }
         }
 
-        window.addEventListener('load', initializeApp);
-
-        document.getElementById('passwordInput').addEventListener('keypress', function(e) {
-            if (e.key === 'Enter') unlockGift();
-        });
-
-        // حفظ تلقائي عند إغلاق الصفحة
-        window.addEventListener('beforeunload', async () => {
-            if (isUnlocked) {
-                await saveDataToDB(currentData);
-            }
-        });
-
-        console.log('🎀 التطبيق جاهز! استخدام IndexedDB للبيانات الكبيرة');
+        // تشغيل التطبيق
+        init();
     </script>
 </body>
 </html>
